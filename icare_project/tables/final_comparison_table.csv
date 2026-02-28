@@ -1,0 +1,5 @@
+Model,Mean Fold AUROC,Mean Fold PR-AUC,Mean Fold F1,Mean Fold ECE,Mean Fold Brier,Pooled AUROC [95% CI],Pooled PR-AUC,Pooled F1 [95% CI],Pooled ECE,Pooled Brier,DeLong p vs Multimodal CNN–BiGRU,Bootstrap p vs Multimodal CNN–BiGRU (F1)
+Multimodal CNN–BiGRU,0.742 ± 0.070,0.851 ± 0.042,0.797 ± 0.050,0.168,0.199,0.760 [0.721-0.795],0.823,0.797 [0.766-0.825],0.146,0.202,Ref,Ref
+XGBoost,0.687 ± 0.067,0.795 ± 0.072,0.822 ± 0.056,0.181,0.208,0.724 [0.682-0.766],0.805,0.810 [0.783-0.835],0.122,0.209,0.4126,0.3780
+Random Forest,0.675 ± 0.059,0.790 ± 0.063,0.790 ± 0.072,0.161,0.209,0.695 [0.646-0.736],0.778,0.772 [0.740-0.798],0.105,0.216,0.1222,0.1020
+Logistic Regression,0.712 ± 0.064,0.815 ± 0.070,0.765 ± 0.053,0.187,0.216,0.717 [0.676-0.758],0.780,0.753 [0.720-0.785],0.106,0.213,0.2508,0.0040

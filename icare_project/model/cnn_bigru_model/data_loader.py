@@ -35,7 +35,7 @@ class ICAREDataset(Dataset):
             print("WARNING: No subjects loaded. Check paths and data files.")
 
     def _process_data(self):
-        # 1. Parse the extracted BCI feature data and group time-series sequences by unique patient IDs.
+        # 1.Parse Raw Data to grouping by Subject
         
         def clean_sub_id(val):
             if hasattr(val, 'tolist'): val = val.tolist()
@@ -103,8 +103,8 @@ class ICAREDataset(Dataset):
             if meta_dict is None:
                 continue
                 
-            # Construct the structured clinical feature vector using standard continuous normalization.
-            # Included Features: Age, Sex, Return of Spontaneous Circulation (ROSC), Out-of-Hospital Cardiac Arrest (OHCA), Shockable Rhythm, Targeted Temperature Management (TTM)
+            # Construct Feature Vector
+            # Features: Age, Sex, ROSC, OHCA, Shockable, TTM
             # Sex: Female=0, Male=1
             sex_val = 1.0 if meta_dict.get('Sex') == 'Male' else 0.0
             
@@ -236,8 +236,9 @@ def get_loocv_loaders(dataset, leave_out_hospital, batch_size=32):
     # Training Sampler (Balanced)
     train_targets = dataset.y[train_indices]
     
-    # Prioritizing biological sex balance during the sampling phase to mitigate demographic bias.
-    # The expected structured metadata index for Sex is 1 (where 0=Female, 1=Male).
+    # prioritizing Sex balance since it is ideal to have equal amount of subjects for both males and females.
+    
+    # Meta index 1 is Sex (0=F, 1=M)
     train_sex = dataset.metadata[train_indices, 1]
     
     count_0 = np.sum(train_sex == 0) # Female
@@ -249,12 +250,15 @@ def get_loocv_loaders(dataset, leave_out_hospital, batch_size=32):
     sample_weights = np.array([weight_1 if s == 1 else weight_0 for s in train_sex])
     sample_weights = torch.from_numpy(sample_weights).double()
     
+    sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+    
 
     # Creating the Loaders
     """
-    When utilizing the WeightedRandomSampler alongside the Subset module, it is necessary to provide weights 
-    that strictly correspond to the localized subset indices rather than the global indices. 
-    The sampler will subsequently generate indices mapped to this specific cohort.
+    for WeightedRandomSampler with Subset, we need to pass weights corresponding to the INDICES within the subset
+    however, WeightedRandomSampler samples indices from 0..len(weights)-1.
+    f we use a subset, the sampler should return indices local to the subset (0 to len(subset)-1),
+    and the Subset.__getitem__ will map them to global indices.
     """
 
     # Correct weights calculation for the subset:

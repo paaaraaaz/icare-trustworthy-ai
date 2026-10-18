@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+
+# Local data & virtual environments
+.venv/
+venv/
+env/
+data/*.mat
+data/*.csv
+
+# Heavy checkpoints & raw predictions
+*.pth
+*.pt
+*.npy
+*.joblib

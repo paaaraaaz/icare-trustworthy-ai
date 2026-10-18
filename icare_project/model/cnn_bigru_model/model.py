@@ -1,105 +1,118 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# ==============================================================================
+# 1. BCI Temporal Encoder (CNN + BiGRU)
+# ==============================================================================
+# This module reads the 72-hour EEG Brain Continuity Index (BCI) time series.
+# The raw input has 25,920 time points (one measurement every 10 seconds).
+# We shrink this long signal with 3 convolutional layers so the GRU can handle it.
+# ==============================================================================
+
 class BCIEncoder(nn.Module):
-    def __init__(self, input_channels=1, hidden_dim=64):
+    def __init__(self, input_channels=1, hidden_dim=64, dropout_rate=0.2):
         super(BCIEncoder, self).__init__()
-        # Input: (Batch, 1, 25920)
-        # Reduce length 25920 -> manageable size
         
-        # Conv Block 1: 25920 -> ~5184 (stride 5)
+        # Conv Block 1: Shrinks 25,920 points down to ~5,184 points (stride of 5)
         self.conv1 = nn.Conv1d(input_channels, 32, kernel_size=10, stride=5, padding=2)
         self.bn1 = nn.BatchNorm1d(32)
+        self.drop1 = nn.Dropout(p=dropout_rate)
         
-        # Conv Block 2: 5184 -> ~1296 (stride 4)
+        # Conv Block 2: Shrinks 5,184 points down to ~1,296 points (stride of 4)
         self.conv2 = nn.Conv1d(32, 64, kernel_size=8, stride=4, padding=2)
         self.bn2 = nn.BatchNorm1d(64)
+        self.drop2 = nn.Dropout(p=dropout_rate)
         
-        # Conv Block 3: 1296 -> ~259 (stride 5)
+        # Conv Block 3: Shrinks 1,296 points down to ~259 points (stride of 5)
         self.conv3 = nn.Conv1d(64, 128, kernel_size=5, stride=5, padding=2)
         self.bn3 = nn.BatchNorm1d(128)
+        self.drop3 = nn.Dropout(p=dropout_rate)
         
-        # Recurrent Layer to capture temporal dynamics of the reduced sequence
+        # Bidirectional GRU: Reads the compressed 259 time points forward and backward
+        # to capture recovery patterns and sudden drops in brain continuity.
         self.gru = nn.GRU(128, hidden_dim, batch_first=True, bidirectional=True)
-        # Output (Batch, Seq, 2*Hidden)
         
-        self.global_pool = nn.AdaptiveAvgPool1d(1) 
+        # Pool across all time points to create a single summary vector
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        
+        # Final linear layer to project the BiGRU summary
         self.fc = nn.Linear(hidden_dim * 2, hidden_dim)
 
     def forward(self, x):
-        # x: (Batch, SeqLen, 1) -> (Batch, 1, SeqLen)
+        # Input shape: (Batch, 25920, 1) -> reorder to (Batch, 1, 25920) for 1D convolution
         x = x.permute(0, 2, 1)
         
+        # Run through the 3 convolutional shrinking blocks
         x = F.relu(self.bn1(self.conv1(x)))
-        x = F.dropout(x, p=0.2, training=True) # Apply Monte Carlo Dropout for uncertainty estimation.
+        x = self.drop1(x)
         
         x = F.relu(self.bn2(self.conv2(x)))
-        x = F.dropout(x, p=0.2, training=True)
+        x = self.drop2(x)
         
         x = F.relu(self.bn3(self.conv3(x)))
-        x = F.dropout(x, p=0.2, training=True)
+        x = self.drop3(x)
         
-        # Prepare for GRU: (Batch, Channels, Seq) -> (Batch, Seq, Channels)
+        # Reorder back for GRU: (Batch, Channels, Time) -> (Batch, Time, Channels)
         x = x.permute(0, 2, 1)
         
+        # Run the bidirectional GRU
         out, _ = self.gru(x)
-        # The output dimensions represent: (Batch, Sequence Length, 2 * Hidden Dimensions)
         
-        # Global Pooling over time
-        x = out.permute(0, 2, 1) # (Batch, Channels, Seq)
+        # Average across all time steps
+        x = out.permute(0, 2, 1)
         x = self.global_pool(x).squeeze(-1)
         
+        # Final activation
         x = F.relu(self.fc(x))
         return x
 
+
+# ==============================================================================
+# 2. Demographic and Clinical Feature Encoder
+# ==============================================================================
+# This small network processes the 6 static patient variables:
+# [Age, Sex, ROSC duration, Out-of-Hospital status, Initial rhythm, TTM]
+# ==============================================================================
+
 class DemographicNet(nn.Module):
-    def __init__(self, input_dim=6, hidden_dim=32):
+    def __init__(self, input_dim=6, hidden_dim=32, dropout_rate=0.1):
         super(DemographicNet, self).__init__()
-        # Structured clinical inputs: [Age, Sex, ROSC, OHCA, Shockable, TTM]
         self.fc1 = nn.Linear(input_dim, 32)
+        self.drop = nn.Dropout(p=dropout_rate)
         self.fc2 = nn.Linear(32, hidden_dim)
-        
+
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        x = F.dropout(x, p=0.1, training=True)
+        x = self.drop(x)
         x = F.relu(self.fc2(x))
         return x
 
-class ICAREModel(nn.Module):
-    def __init__(self, meta_dim=6):
-        super(ICAREModel, self).__init__()
-        self.branch_a = BCIEncoder(hidden_dim=64)
-        self.branch_b = DemographicNet(input_dim=meta_dim, hidden_dim=32)
-        
-        self.fusion = nn.Linear(64 + 32, 32)
-        self.output = nn.Linear(32, 1)
-        
-    def forward(self, x_bci, x_meta):
-        # Branch A
-        feat_a = self.branch_a(x_bci)
-        
-        # Branch B
-        feat_b = self.branch_b(x_meta)
-        
-        # Fusion
-        combined = torch.cat([feat_a, feat_b], dim=1)
-        
-        x = F.relu(self.fusion(combined))
-        x = F.dropout(x, p=0.2, training=True) # Apply Monte Carlo Dropout at the fusion layer.
-        
-        logits = self.output(x)
-        return logits # Return logits for BCEWithLogitsLoss
 
-if __name__ == "__main__":
-    # Test Model
-    model = ICAREModel(meta_dim=6)
-    print(model)
-    
-    # Dummy Input
-    bci = torch.randn(2, 25920, 1)
-    meta = torch.randn(2, 6)
-    
-    out = model(bci, meta)
-    print("Output shape:", out.shape)
+# ==============================================================================
+# 3. Multimodal CNN-BiGRU Full Model
+# ==============================================================================
+# This model combines the EEG sequence embedding with the clinical embedding,
+# passes them through a fusion head, and outputs the risk of poor outcome.
+# ==============================================================================
+
+class MultimodalICAREModel(nn.Module):
+    def __init__(self, gru_hidden=64, dropout_rate=0.2, fusion_dropout=0.2):
+        super(MultimodalICAREModel, self).__init__()
+        self.bci_encoder = BCIEncoder(input_channels=1, hidden_dim=gru_hidden, dropout_rate=dropout_rate)
+        self.demo_encoder = DemographicNet(input_dim=6, hidden_dim=32, dropout_rate=dropout_rate)
+        
+        # Fusion head: concatenates EEG features (gru_hidden) and clinical features (32)
+        self.fusion = nn.Sequential(
+            nn.Linear(gru_hidden + 32, 32),
+            nn.ReLU(),
+            nn.Dropout(p=fusion_dropout),
+            nn.Linear(32, 1) # Outputs a single logit (poor outcome vs good outcome)
+        )
+
+    def forward(self, bci, demo):
+        bci_feats = self.bci_encoder(bci)
+        demo_feats = self.demo_encoder(demo)
+        combined = torch.cat([bci_feats, demo_feats], dim=1)
+        logits = self.fusion(combined)
+        return logits.squeeze(-1)

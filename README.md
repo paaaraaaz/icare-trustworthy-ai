@@ -1,95 +1,111 @@
-# Trustworthy Neuroprognostication using CNN-BiGRU on I-CARE BCI
+# Trustworthy Neuroprognostication using CNN–BiGRU on I-CARE BCI
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository contains the official code implementation for the paper:  
-*An Uncertainty-Aware Neuroprognostication Pipeline Using Longitudinal Brain Continuity Index and Leave-One-Center-Out Validation* (Under review).
+Official code implementation for:  
+**Uncertainty-Aware Multicenter Neuroprognostication with Longitudinal Brain Continuity Index**
 
-We present a hybrid, trustworthy **CNN+BiGRU** deep learning architecture and traditional Machine Learning (ML) ablation models designed to predict neurological outcomes in patients following cardiac arrest. This repository uses the publicly available Brain-Computer Interface (BCI) extracted features from the **I-CARE** dataset hosted on Dryad.
+This repository provides the complete experimental code to evaluate multimodal deep learning and classical machine learning models for post–cardiac arrest neurological outcome prediction. The pipeline operates on the 72-hour **Brain Continuity Index (BCI)** representation from the I-CARE consortium under strict **Leave-One-Hospital-Out (LOHO)** cross-validation across 607 patients.
 
-## Features
-- **Deep Learning Model:** A robust 1D Convolutional Neural Network combined with a Bidirectional GRU (`CNN+BiGRU`) tailored for continuous time-series EEG features.
-- **Traditional ML Ablation Models:** Implementation of XGBoost, Random Forest, and SVM baselines for direct comparative analysis.
-- **Trustworthy AI Pipeline:** Built-in scripts for Uncertainty Quantification (Monte Carlo Dropout), Reliability/Calibration Analysis (Platt Scaling), and Demographic Fairness benchmarking across Age and Sex subgroups.
-- **Out-of-Distribution (OOD) Generalization:** Designed utilizing a Leave-One-Hospital-Out (LOHO) or equivalent Cross-Validation validation strategy to rigorously test clinical generalization.
+---
+
+## Key Features
+
+1. **Multimodal CNN–BiGRU**:
+   - 1D convolutional downsampling (~100× sequence compression from 25,920 to 259 steps) coupled with bidirectional GRU.
+   - Fused with 6 clinical covariates (age, sex, ROSC duration, OHCA, shockable rhythm, TTM).
+   - Active Monte Carlo dropout ($S = 50$ stochastic passes) for epistemic uncertainty quantification.
+
+2. **Benchmarked Baselines**:
+   - **Deep Sequence Model**: Temporal Convolutional Network (TCN) with dilated causal convolutions.
+   - **Classical ML Baselines**: XGBoost, Random Forest, and L2-regularized Logistic Regression trained on 21 engineered temporal summaries + 6 clinical covariates.
+
+3. **Trustworthy AI Audits**:
+   - **Safety Operating Point**: True positive rate evaluated at fixed false positive rate $\le 0.05$ (PhysioNet Challenge benchmark).
+   - **Probabilistic Calibration**: Expected Calibration Error (ECE) and Brier scores evaluated pre- and post-temperature scaling.
+   - **Demographic Fairness**: Stratified evaluation across sex and age groups with 1,000-sample bootstrap 95% confidence intervals.
+   - **Selective Prediction**: Risk–coverage analysis driven by Monte Carlo predictive entropy.
+
+---
+
+## Summary of Results (Pooled $N=607$)
+
+| Model | AUROC [95% CI] | PR-AUC [95% CI] | Positive F1 [95% CI] | TPR @ FPR $\le$ 0.05 | ECE (Calibrated) | Brier (Calibrated) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Multimodal CNN–BiGRU** | 0.736 [0.696, 0.775] | **0.830** [0.793, 0.864] | 0.739 [0.703, 0.774] | **0.272** | 0.170 | 0.231 |
+| **Logistic Regression**   | **0.747** [0.703, 0.787] | 0.800 [0.752, 0.846] | 0.749 [0.718, 0.784] | 0.152 | 0.117 | 0.208 |
+| **XGBoost**               | 0.742 [0.700, 0.782] | 0.802 [0.759, 0.843] | **0.763** [0.729, 0.796] | 0.160 | **0.044** | **0.193** |
+| **Random Forest**         | 0.724 [0.680, 0.764] | 0.786 [0.740, 0.830] | 0.759 [0.724, 0.788] | 0.157 | 0.062 | 0.200 |
+| **TCN**                   | 0.654 [0.610, 0.698] | 0.761 [0.715, 0.806] | 0.727 [0.694, 0.757] | 0.162 | 0.166 | 0.244 |
+
+---
 
 ## Repository Structure
 
-The core files provided in this repository map directly to the methodology presented in the manuscript:
-
 ```text
 ├── icare_project/
+│   ├── run_nested_tuning.py        # Complete nested LOHO tuning & evaluation across all 5 models
 │   ├── model/
 │   │   └── cnn_bigru_model/
-│   │       ├── model.py                # Core PyTorch CNN+BiGRU architecture
-│   │       ├── data_loader.py          # PyTorch dataset & data loaders for Dryad BCI features
-│   │       ├── train_eval.py           # Training, validation, testing, and metrics logic
-│   │       ├── main.py                 # Main execution script to run LOOCV pipeline
-│   │       ├── calibrate.py            # Post-hoc confidence calibration scripts
-│   │       ├── calibrate_confidence.py # Trustworthy AI confidence metrics
-│   │       └── generate_visuals.py     # Reproduces paper's visualization graphs
+│   │       ├── model.py            # Multimodal CNN-BiGRU PyTorch architecture
+│   │       └── data_loader.py      # BCI and clinical metadata data loader
+│   ├── data/
+│   │   └── unified_loader.py       # Deterministic LOHO hospital splits
 │   ├── experiments/
+│   │   ├── tcn/
+│   │   │   └── model_tcn.py        # TCN alternative deep model
 │   │   └── ablations/
-│   │       ├── model_ablations.py      # Traditional ML model instantiations (XGBoost, etc.)
-│   │       └── train_eval_ablations.py # Training pipeline for ablation models
-│   ├── tables/                         # CSV outputs of fold-level and aggregated performance
+│   │       ├── model_ablations.py  # Ablation variants (CNN-only, GRU-only, No-clinical)
+│   │       └── train_eval_ablations.py # Structural ablation training
+│   ├── features/
+│   │   └── summary_features.py     # 21 engineered temporal BCI features
+│   ├── stats/
+│   │   ├── delong_tests.py         # DeLong test for AUROC comparison
+│   │   └── bootstrap_tests.py      # Paired bootstrap tests for F1 and CIs
+│   ├── tables/                     # Output CSV performance tables (with 95% CIs)
 │   └── figures/
-│       └── paper_ready/                # High-resolution generated manuscript visuals (ROC, Risk-Coverage, Reliability)
+│       └── paper_ready/            # High-resolution publication figures (ROC, Calibration, etc.)
+├── requirements.txt
 └── README.md
 ```
 
-## Dataset Access
+---
 
-This project utilizes the processed Brain Continuity Index (BCI) features extracted from the I-CARE (International Cardiac Arrest REsearch) consortium clinical EEG dataset. 
+## Installation & Setup
 
-Because we rely on the derived BCI dataset hosted on **Dryad**, all data used in our experiments is completely open-access and publicly available. 
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/paaaraaaz/icare-trustworthy-ai.git
+   cd icare-trustworthy-ai
+   ```
 
-To reproduce these results:
-1. Download the isolated I-CARE BCI dataset from Dryad here: [**Dryad DOI:10.5061/dryad.2fqz612zv**](https://datadryad.org/dataset/doi:10.5061/dryad.2fqz612zv).
-2. For context on the original clinical dataset, you may refer to the full I-CARE corpus on PhysioNet here: [**I-CARE v2.1**](https://physionet.org/content/i-care/2.1/).
-3. Place the downloaded `.csv` BCI files into the `icare_project/data/` directory.
-4. Update the data paths within `icare_project/model/cnn_bigru_model/data_loader.py` as needed.
+2. **Install requirements**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Installation and Requirements
+3. **Data Access**:
+   - The Brain Continuity Index (BCI) dataset is publicly available on Dryad: [**Dryad DOI: 10.5061/dryad.2fqz612zv**](https://doi.org/10.5061/dryad.2fqz612zv).
+   - Clinical metadata can be downloaded from the PhysioNet I-CARE challenge repository: [**PhysioNet I-CARE Database**](https://doi.org/10.13026/m33r-bj81).
 
-1. Clone this repository:
+---
+
+## Running the Pipeline
+
+To execute the complete nested Leave-One-Hospital-Out evaluation across all 5 model families:
 ```bash
-git clone https://github.com/YourUsername/trustworthy-neuroprognostication.git
-cd trustworthy-neuroprognostication
+python icare_project/run_nested_tuning.py
 ```
 
-2. Install dependencies:
-```bash
-pip install torch torchvision torchaudio numpy pandas scikit-learn matplotlib seaborn xgboost
-```
-
-## Usage Instructions
-
-### 1. Training the CNN-BiGRU framework
-To run the full Cross-Validation training loop, uncertainty estimation, and evaluation for the deep neural network:
-```bash
-python icare_project/model/cnn_bigru_model/main.py
-```
-
-### 2. Running ML Baseline Ablations
-To execute the traditional machine learning baselines:
+To run the structural ablation experiments:
 ```bash
 python icare_project/experiments/ablations/train_eval_ablations.py
 ```
 
-### 3. Generating Trustworthy AI Metrics & Visuals
-To generate the exact figures seen in the paper (Calibration curves, Fairness bar plots, Risk-Coverage Tradeoff curves):
-```bash
-python icare_project/model/cnn_bigru_model/generate_visuals.py
-```
-
-## Citation
-If you find this code or methodology useful in your research, please cite our paper:
-> *Citation details will be updated upon publication.*
+---
 
 ## License
-This project is licensed under the MIT License - see the LICENSE file for details.
 
-
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

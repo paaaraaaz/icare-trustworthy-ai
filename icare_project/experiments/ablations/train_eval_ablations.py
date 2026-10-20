@@ -1,6 +1,7 @@
 import os
 import sys
 import copy
+import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -86,7 +87,8 @@ def train_and_validate_ablation(model, train_loader, val_loader, test_loader,
                                 variant_name='Full', hospital_id='Unknown',
                                 loss_type='focal', threshold_type='youden',
                                 epochs=15, lr=1e-3, device=DEVICE,
-                                checkpoint_dir='checkpoints_ablations'):
+                                checkpoint_dir='checkpoints_ablations',
+                                eval_only=False):
     os.makedirs(checkpoint_dir, exist_ok=True)
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -96,10 +98,15 @@ def train_and_validate_ablation(model, train_loader, val_loader, test_loader,
     best_state = None
     best_model_path = os.path.join(checkpoint_dir, f'best_{variant_name}_hosp_{hospital_id}.pt')
     
-    # Fast path: load saved checkpoint if already trained
-    if os.path.exists(best_model_path):
-        best_state = torch.load(best_model_path, map_location=device)
-        model.load_state_dict(best_state)
+    # Checkpoint loading vs fresh retraining:
+    # If eval_only=True, load saved checkpoint to reproduce or audit without retraining.
+    # Otherwise, always retrain fresh to guarantee reproducibility and prevent stale weight leakage.
+    if eval_only:
+        if os.path.exists(best_model_path):
+            best_state = torch.load(best_model_path, map_location=device)
+            model.load_state_dict(best_state)
+        else:
+            raise FileNotFoundError(f"Checkpoint not found for --eval_only: {best_model_path}")
     else:
         for epoch in range(epochs):
             model.train()
@@ -146,7 +153,7 @@ def train_and_validate_ablation(model, train_loader, val_loader, test_loader,
         'Threshold': threshold
     }, test_m['targets'], test_m['preds'], test_bin
 
-def run_all_ablations(output_csv='ablation_table2.csv'):
+def run_all_ablations(output_csv='ablation_table2.csv', eval_only=False, checkpoint_dir='checkpoints_ablations'):
     print(f"Loading I-CARE dataset on device: {DEVICE}...")
     # Supports optional environment variable ICARE_DATA_DIR
     dataset = ICAREDataset()
@@ -175,7 +182,9 @@ def run_all_ablations(output_csv='ablation_table2.csv'):
                 variant_name=vname.replace(' ', '_'),
                 hospital_id=hosp,
                 epochs=12,
-                device=DEVICE
+                device=DEVICE,
+                checkpoint_dir=checkpoint_dir,
+                eval_only=eval_only
             )
             records.append(res)
             pooled_by_variant[vname]['targets'].extend(y_true)
@@ -217,4 +226,9 @@ def run_all_ablations(output_csv='ablation_table2.csv'):
     return df_summary
 
 if __name__ == '__main__':
-    run_all_ablations()
+    parser = argparse.ArgumentParser(description="Strictly leak-free ablation study runner.")
+    parser.add_argument('--output_csv', type=str, default='ablation_table2.csv', help="Output CSV path for results")
+    parser.add_argument('--eval_only', action='store_true', help="Evaluate existing checkpoints instead of retraining fresh")
+    parser.add_argument('--checkpoint_dir', type=str, default='checkpoints_ablations', help="Directory to store or load checkpoints")
+    args = parser.parse_args()
+    run_all_ablations(output_csv=args.output_csv, eval_only=args.eval_only, checkpoint_dir=args.checkpoint_dir)

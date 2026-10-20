@@ -7,14 +7,16 @@ import os
 import glob
 
 class ICAREDataset(Dataset):
-    def __init__(self, mat_file_path=None, metadata_root=None, window_hours=72, resolution_seconds=10):
+    def __init__(self, mat_file_path=None, metadata_root=None, window_hours=72, resolution_seconds=10, return_mask=False):
         """
         Args:
             mat_file_path: path to the .mat file containing BCI features.
             metadata_root: root directory of the downloaded metadata (e.g., data/physionet_metadata/training)
             window_hours: length of the time window to consider (default 72h).
             resolution_seconds: resolution of BCI data (default is 10s).
+            return_mask: if True, __getitem__ returns (x_bci, x_meta, y, obs_mask); default False for backwards compatibility.
         """
+        self.return_mask = return_mask
         # Check environment variable ICARE_DATA_DIR first if set
         env_dir = os.environ.get("ICARE_DATA_DIR")
         if env_dir:
@@ -65,7 +67,7 @@ class ICAREDataset(Dataset):
              raise Exception("Please implement h5py loading if scipy.io fails (v7.3 mat files)")
 
         # Process Data and Load Real Metadata
-        self.subjects, self.X, self.metadata, self.y, self.hospitals = self._process_data()
+        self.subjects, self.X, self.obs_masks, self.metadata, self.y, self.hospitals = self._process_data()
         
         # Validate data
         if len(self.subjects) == 0:
@@ -107,6 +109,7 @@ class ICAREDataset(Dataset):
 
         # 2.Build Dataset with Real Metadata
         X_list = []
+        mask_list = []
         meta_list = []
         y_list = []
         subj_list = []
@@ -214,9 +217,10 @@ class ICAREDataset(Dataset):
             if hospital not in VALID_HOSPITALS:
                 continue
             
-            # Construct BCI Time Series (Same as before)
+            # Construct BCI Time Series & Observation Mask
             segments = patient_data_map[pid]
             full_series = np.zeros(self.total_steps, dtype=np.float32)
+            obs_mask = np.zeros(self.total_steps, dtype=np.float32)
             segments.sort(key=lambda x: x[0])
             
             for start_time, bci_values in segments:
@@ -231,17 +235,20 @@ class ICAREDataset(Dataset):
                 if end_idx > self.total_steps:
                     write_len = self.total_steps - start_idx
                     full_series[start_idx:] = clean_bci[:write_len]
+                    obs_mask[start_idx:] = 1.0
                 else:
                     full_series[start_idx:end_idx] = clean_bci
+                    obs_mask[start_idx:end_idx] = 1.0
             
             # Add to lists
             X_list.append(full_series)
+            mask_list.append(obs_mask)
             meta_list.append(meta_vec)
             y_list.append(label)
             subj_list.append(pid)
             hospital_list.append(hospital)
 
-        return subj_list, np.array(X_list), np.array(meta_list), np.array(y_list), np.array(hospital_list)
+        return subj_list, np.array(X_list), np.array(mask_list), np.array(meta_list), np.array(y_list), np.array(hospital_list)
 
     def _parse_metadata_file(self, path):
         # Format: "Key: Value"
@@ -283,6 +290,9 @@ class ICAREDataset(Dataset):
         x_bci = torch.tensor(self.X[idx], dtype=torch.float32).unsqueeze(-1)
         x_meta = torch.tensor(self.metadata[idx], dtype=torch.float32)
         y = torch.tensor(self.y[idx], dtype=torch.float32)
+        if getattr(self, 'return_mask', False):
+            obs_mask = torch.tensor(self.obs_masks[idx], dtype=torch.float32)
+            return x_bci, x_meta, y, obs_mask
         return x_bci, x_meta, y
 
 def get_loocv_loaders(dataset, leave_out_hospital, batch_size=32):

@@ -156,12 +156,46 @@ def fit_temperature_scaling(val_logits, val_labels):
 
 # ----------------- Feature Extraction for Classical Models -----------------
 def extract_flat_features(loader):
+    # If the loader wraps a Dataset/Subset with obs_masks, extract directly and accurately
+    if hasattr(loader, 'dataset'):
+        ds = loader.dataset
+        if isinstance(ds, torch.utils.data.Subset):
+            indices = ds.indices
+            parent = ds.dataset
+            if hasattr(parent, 'obs_masks'):
+                X_out = []
+                for idx in indices:
+                    bci = parent.X[idx]
+                    mask = parent.obs_masks[idx]
+                    meta = parent.metadata[idx]
+                    feats = extract_classical_features(bci, obs_mask=mask)
+                    X_out.append(np.concatenate([feats, meta]))
+                y_out = np.array(parent.y[indices])
+                return np.array(X_out), y_out
+        elif hasattr(ds, 'obs_masks'):
+            X_out = []
+            for idx in range(len(ds)):
+                bci = ds.X[idx]
+                mask = ds.obs_masks[idx]
+                meta = ds.metadata[idx]
+                feats = extract_classical_features(bci, obs_mask=mask)
+                X_out.append(np.concatenate([feats, meta]))
+            y_out = np.array(ds.y)
+            return np.array(X_out), y_out
+
+    # General batch-wise fallback
     X_out, y_out = [], []
-    for x_bci, x_meta, y in loader:
+    for batch in loader:
+        if len(batch) == 4:
+            x_bci, x_meta, y, mask = batch
+        else:
+            x_bci, x_meta, y = batch
+            mask = None
         for i in range(len(y)):
             seq = x_bci[i].numpy()
             meta = x_meta[i].numpy()
-            feats = extract_classical_features(seq)
+            m = mask[i].numpy() if mask is not None else None
+            feats = extract_classical_features(seq, obs_mask=m)
             X_out.append(np.concatenate([feats, meta]))
             y_out.append(y[i].item())
     return np.array(X_out), np.array(y_out)
@@ -333,8 +367,32 @@ def main():
     set_seed(42)
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs('tables', exist_ok=True)
-    dataset = ICAREDataset('../data/BCI_Features_for_all_train_ICARE_Subjects_.mat',
-                           metadata_root='../data/physionet_metadata/training')
+    print("Loading I-CARE Dataset...")
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data_root = os.environ.get("ICARE_DATA_DIR", None)
+    if data_root is not None:
+        dataset = ICAREDataset(
+            mat_file_path=os.path.join(data_root, 'BCI_Features_for_all_train_ICARE_Subjects_.mat'),
+            metadata_root=os.path.join(data_root, 'physionet_metadata', 'training')
+        )
+    else:
+        candidate_roots = [
+            os.path.join(repo_root, 'data'),
+            os.path.join(repo_root, '..', 'data'),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data'),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+        ]
+        found_mat, found_meta = None, None
+        for cr in candidate_roots:
+            m = os.path.join(cr, 'BCI_Features_for_all_train_ICARE_Subjects_.mat')
+            meta = os.path.join(cr, 'physionet_metadata', 'training')
+            if os.path.exists(m) and os.path.exists(meta):
+                found_mat, found_meta = m, meta
+                break
+        if found_mat and found_meta:
+            dataset = ICAREDataset(mat_file_path=found_mat, metadata_root=found_meta)
+        else:
+            dataset = ICAREDataset()
 
     validation_search_records, selected_hyperparams, test_fold_records = [], [], []
     pooled = {m: {k: [] for k in ['targets', 'probs', 'probs_uncal', 'preds']} for m in MODELS}

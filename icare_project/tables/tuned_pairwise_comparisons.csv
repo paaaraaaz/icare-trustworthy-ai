@@ -1,5 +1,5 @@
-Comparison,DeLong_p_value,Bootstrap_F1_p_value
-CNN-BiGRU vs LogisticRegression,0.775027376278622,0.504
-CNN-BiGRU vs RandomForest,0.7906138477917475,0.237
-CNN-BiGRU vs XGBoost,0.8804063149880104,0.185
-CNN-BiGRU vs TCN,0.006714548068535553,0.362
+Comparison,DeLong_p_value,DeLong_z_score,Permutation_F1_p_value,F1_Delta_95CI_Lower,F1_Delta_95CI_Upper
+CNN-BiGRU vs LogisticRegression,0.5232,-0.6385,0.541,-0.0434,0.023
+CNN-BiGRU vs RandomForest,0.553,0.5933,0.231,-0.0533,0.0107
+CNN-BiGRU vs XGBoost,0.7396,-0.3323,0.192,-0.0592,0.0093
+CNN-BiGRU vs TCN,0.0,5.4029,0.378,-0.0147,0.0395

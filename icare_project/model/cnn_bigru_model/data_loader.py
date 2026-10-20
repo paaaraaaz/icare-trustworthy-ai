@@ -7,14 +7,51 @@ import os
 import glob
 
 class ICAREDataset(Dataset):
-    def __init__(self, mat_file_path, metadata_root='data/physionet_metadata/training', window_hours=72, resolution_seconds=10):
+    def __init__(self, mat_file_path=None, metadata_root=None, window_hours=72, resolution_seconds=10):
         """
         Args:
             mat_file_path: path to the .mat file containing BCI features.
             metadata_root: root directory of the downloaded metadata (e.g., data/physionet_metadata/training)
             window_hours: length of the time window to consider (default 72h).
-            resolution_seconds: esolution of BCI data (default is 10s).
+            resolution_seconds: resolution of BCI data (default is 10s).
         """
+        # Check environment variable ICARE_DATA_DIR first if set
+        env_dir = os.environ.get("ICARE_DATA_DIR")
+        if env_dir:
+            env_mat = os.path.join(env_dir, 'BCI_Features_for_all_train_ICARE_Subjects_.mat')
+            env_meta = os.path.join(env_dir, 'physionet_metadata', 'training')
+            if os.path.exists(env_mat) and mat_file_path is None:
+                mat_file_path = env_mat
+            if os.path.exists(env_meta) and metadata_root is None:
+                metadata_root = env_meta
+
+        if mat_file_path is None:
+            candidates = [
+                'data/BCI_Features_for_all_train_ICARE_Subjects_.mat',
+                '../data/BCI_Features_for_all_train_ICARE_Subjects_.mat',
+                '../../data/BCI_Features_for_all_train_ICARE_Subjects_.mat',
+                os.path.join(os.path.expanduser('~'), 'PycharmProjects/icare/data/BCI_Features_for_all_train_ICARE_Subjects_.mat')
+            ]
+            for c in candidates:
+                if os.path.exists(c):
+                    mat_file_path = c
+                    break
+            if mat_file_path is None:
+                raise FileNotFoundError("Could not find BCI_Features_for_all_train_ICARE_Subjects_.mat")
+                
+        if metadata_root is None:
+            candidates = [
+                'data/physionet_metadata/training',
+                '../data/physionet_metadata/training',
+                '../../data/physionet_metadata/training',
+                os.path.join(os.path.expanduser('~'), 'PycharmProjects/icare/data/physionet_metadata/training')
+            ]
+            for c in candidates:
+                if os.path.exists(c):
+                    metadata_root = c
+                    break
+            if metadata_root is None:
+                raise FileNotFoundError("Could not find data/physionet_metadata/training")
         self.window_hours = window_hours
         self.resolution_seconds = resolution_seconds
         self.total_steps = int(window_hours * 3600 / resolution_seconds)
@@ -105,11 +142,24 @@ class ICAREDataset(Dataset):
                 
             # Construct Feature Vector
             # Features: Age, Sex, ROSC, OHCA, Shockable, TTM
-            # Sex: Female=0, Male=1
-            sex_val = 1.0 if meta_dict.get('Sex') == 'Male' else 0.0
+            # Sex: Female=0, Male=1, Unknown/Missing=0.5
+            sex_raw = meta_dict.get('Sex')
+            if sex_raw == 'Male':
+                sex_val = 1.0
+            elif sex_raw == 'Female':
+                sex_val = 0.0
+            else:
+                sex_val = 0.5
             
-            # Age
-            age_val = float(meta_dict.get('Age', 60.0)) / 100.0 # Normalize
+            # Age: Normalization with cohort median fallback (60 years) if NaN/missing
+            age_raw = meta_dict.get('Age')
+            try:
+                if age_raw is None or np.isnan(float(age_raw)):
+                    age_val = 0.60
+                else:
+                    age_val = float(age_raw) / 100.0
+            except (ValueError, TypeError):
+                age_val = 0.60
             
             # ROSC
             # Can be NaN. Handle it.
@@ -146,14 +196,23 @@ class ICAREDataset(Dataset):
             # Target: Outcome / CPC
             # Good (CPC 1-2) -> 0
             # Poor (CPC 3-5) -> 1
+            # Note: Strictly check for both None and np.nan to avoid evaluating NaN >= 3
             cpc = meta_dict.get('CPC')
             if cpc is None:
-                continue # Cannot train without target
-                
-            label = 1.0 if cpc >= 3 else 0.0
+                continue
+            try:
+                cpc_num = float(cpc)
+                if np.isnan(cpc_num):
+                    continue
+                label = 1.0 if cpc_num >= 3.0 else 0.0
+            except (ValueError, TypeError):
+                continue
             
-            # Hospital
-            hospital = meta_dict.get('Hospital', 'Unknown')
+            # Hospital validation (strictly restricted to the 5 consortium hospitals)
+            VALID_HOSPITALS = {'A', 'B', 'D', 'E', 'F'}
+            hospital = meta_dict.get('Hospital')
+            if hospital not in VALID_HOSPITALS:
+                continue
             
             # Construct BCI Time Series (Same as before)
             segments = patient_data_map[pid]
@@ -161,15 +220,19 @@ class ICAREDataset(Dataset):
             segments.sort(key=lambda x: x[0])
             
             for start_time, bci_values in segments:
+                if not np.isfinite(start_time):
+                    continue
                 start_idx = int(start_time / self.resolution_seconds)
-                length = len(bci_values)
-                if start_idx >= self.total_steps: continue
+                if start_idx < 0 or start_idx >= self.total_steps:
+                    continue
+                clean_bci = np.nan_to_num(np.asarray(bci_values, dtype=np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+                length = len(clean_bci)
                 end_idx = start_idx + length
                 if end_idx > self.total_steps:
                     write_len = self.total_steps - start_idx
-                    full_series[start_idx:] = bci_values[:write_len]
+                    full_series[start_idx:] = clean_bci[:write_len]
                 else:
-                    full_series[start_idx:end_idx] = bci_values
+                    full_series[start_idx:end_idx] = clean_bci
             
             # Add to lists
             X_list.append(full_series)

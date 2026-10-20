@@ -126,4 +126,4 @@ class ICAREModelTCN(nn.Module):
         x = F.relu(self.fusion(combined))
         x = self.fusion_dropout(x)
         logits = self.output(x)
-        return logits.squeeze(-1)
+        return logits

@@ -16,17 +16,17 @@ This repository provides the complete experimental code to evaluate multimodal d
 1. **Multimodal CNN–BiGRU**:
    - 1D convolutional downsampling (~100× sequence compression from 25,920 to 259 steps) coupled with bidirectional GRU.
    - Fused with 6 clinical covariates (age, sex, ROSC duration, OHCA, shockable rhythm, TTM).
-   - Active Monte Carlo dropout ($S = 50$ stochastic passes) for epistemic uncertainty quantification.
+   - Active Monte Carlo dropout ($S = 50$ stochastic passes) for predictive uncertainty quantification.
 
 2. **Benchmarked Baselines**:
    - **Deep Sequence Model**: Temporal Convolutional Network (TCN) with dilated causal convolutions.
-   - **Classical ML Baselines**: XGBoost, Random Forest, and L2-regularized Logistic Regression trained on 21 engineered temporal summaries + 6 clinical covariates.
+   - **Classical ML Baselines**: XGBoost, Random Forest, and Regularized Logistic Regression (L1 and L2 penalties evaluated in tuning) trained on 21 engineered temporal summaries + 6 clinical covariates.
 
 3. **Trustworthy AI Audits**:
    - **Safety Operating Point**: True positive rate evaluated at fixed false positive rate $\le 0.05$ (PhysioNet Challenge benchmark).
    - **Probabilistic Calibration**: Expected Calibration Error (ECE) and Brier scores evaluated pre- and post-temperature scaling.
    - **Demographic Fairness**: Stratified evaluation across sex and age groups with 1,000-sample bootstrap 95% confidence intervals.
-   - **Selective Prediction**: Risk–coverage analysis driven by Monte Carlo predictive entropy.
+   - **Selective Prediction**: Risk–coverage analysis driven by Monte Carlo predictive entropy (total predictive uncertainty).
 
 ---
 
@@ -38,7 +38,7 @@ This repository provides the complete experimental code to evaluate multimodal d
 | **Logistic Regression**   | **0.747** [0.703, 0.787] | 0.800 [0.752, 0.846] | 0.749 [0.718, 0.784] | 0.152 | 0.117 | 0.208 |
 | **XGBoost**               | 0.742 [0.700, 0.782] | 0.802 [0.759, 0.843] | **0.763** [0.729, 0.796] | 0.160 | **0.044** | **0.193** |
 | **Random Forest**         | 0.724 [0.680, 0.764] | 0.786 [0.740, 0.830] | 0.759 [0.724, 0.788] | 0.157 | 0.062 | 0.200 |
-| **TCN**                   | 0.654 [0.610, 0.698] | 0.761 [0.715, 0.806] | 0.727 [0.694, 0.757] | 0.162 | 0.166 | 0.244 |
+| **TCN**                   | 0.727 [0.687, 0.766] | 0.814 [0.773, 0.853] | 0.755 [0.727, 0.785] | 0.221 | 0.112 | 0.204 |
 
 ---
 

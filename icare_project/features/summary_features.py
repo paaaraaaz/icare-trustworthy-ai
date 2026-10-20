@@ -31,11 +31,13 @@ def extract_classical_features(bci_sequence):
     slope, _ = np.polyfit(x, seq, 1)
     
     # 3. Suppression burden (fraction of time EEG was deeply suppressed)
+    # Note: Unrecorded post-monitoring intervals are zero-padded in raw BCI files
     frac_lt_01 = float(np.mean(seq < 0.1))
     frac_lt_02 = float(np.mean(seq < 0.2))
     frac_lt_03 = float(np.mean(seq < 0.3))
     
     # 4. Time to first sustained continuity (> 0.7 for 36 consecutive steps = 6 minutes)
+    # Expressed as sample index (0 to 25,920 steps; 360 steps = 1 hour), standard-scaled for ML baselines
     sustained_n = 36
     is_continuous = (seq > 0.7).astype(int)
     conv = np.convolve(is_continuous, np.ones(sustained_n), mode='valid')

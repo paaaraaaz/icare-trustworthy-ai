@@ -1,0 +1,5 @@
+Ablation_Variant,Pooled_AUROC,Pooled_PRAUC,F1_Positive,F1_Macro,Accuracy,Threshold_Protocol
+Full Model,0.693,0.797,0.715,0.648,0.661,Fold-wise Validation Youden (Leak-Free)
+No Clinical Meta,0.658,0.742,0.757,0.656,0.685,Fold-wise Validation Youden (Leak-Free)
+CNN-only,0.717,0.814,0.755,0.651,0.682,Fold-wise Validation Youden (Leak-Free)
+GRU-only,0.758,0.819,0.732,0.685,0.692,Fold-wise Validation Youden (Leak-Free)

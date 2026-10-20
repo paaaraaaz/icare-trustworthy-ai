@@ -115,4 +115,4 @@ class MultimodalICAREModel(nn.Module):
         demo_feats = self.demo_encoder(demo)
         combined = torch.cat([bci_feats, demo_feats], dim=1)
         logits = self.fusion(combined)
-        return logits.squeeze(-1)
+        return logits

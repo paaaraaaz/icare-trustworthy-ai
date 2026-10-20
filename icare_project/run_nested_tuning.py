@@ -134,7 +134,10 @@ def compute_ece(y_true, y_prob, n_bins=15):
     bin_limits = np.linspace(0, 1, n_bins + 1)
     ece = 0.0
     for i in range(n_bins):
-        bin_idx = (y_prob >= bin_limits[i]) & (y_prob < bin_limits[i+1])
+        if i == n_bins - 1:
+            bin_idx = (y_prob >= bin_limits[i]) & (y_prob <= bin_limits[i+1])
+        else:
+            bin_idx = (y_prob >= bin_limits[i]) & (y_prob < bin_limits[i+1])
         if np.sum(bin_idx) > 0:
             acc = np.mean(y_true[bin_idx])
             conf = np.mean(y_prob[bin_idx])
@@ -440,7 +443,7 @@ def main():
         # ---------- Save fold outputs ----------
         for m in MODELS:
             o = fold_out[m]
-            preds = (o['cal'] > o['th']).astype(int)
+            preds = (o['cal'] >= o['th']).astype(int)
             mdir = os.path.join(OUT_DIR, f'fold_{fold_idx}', m); os.makedirs(mdir, exist_ok=True)
             np.save(os.path.join(mdir, 'y_true.npy'), o['y'])
             np.save(os.path.join(mdir, 'probs.npy'), o['cal'])

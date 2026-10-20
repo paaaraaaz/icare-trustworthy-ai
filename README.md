@@ -64,9 +64,7 @@ This repository provides the complete experimental code to evaluate multimodal d
 │   ├── stats/
 │   │   ├── delong_tests.py         # DeLong test for AUROC comparison
 │   │   └── bootstrap_tests.py      # Paired bootstrap tests for F1 and CIs
-│   ├── tables/                     # Output CSV performance tables (with 95% CIs)
-│   └── figures/
-│       └── paper_ready/            # High-resolution publication figures (ROC, Calibration, etc.)
+│   └── tables/                     # Output CSV performance tables (with 95% CIs)
 ├── requirements.txt
 └── README.md
 ```

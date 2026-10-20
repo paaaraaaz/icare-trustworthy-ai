@@ -229,16 +229,13 @@ class ICAREDataset(Dataset):
                 start_idx = int(start_time / self.resolution_seconds)
                 if start_idx < 0 or start_idx >= self.total_steps:
                     continue
-                clean_bci = np.nan_to_num(np.asarray(bci_values, dtype=np.float32), nan=0.0, posinf=1.0, neginf=0.0)
-                length = len(clean_bci)
-                end_idx = start_idx + length
-                if end_idx > self.total_steps:
-                    write_len = self.total_steps - start_idx
-                    full_series[start_idx:] = clean_bci[:write_len]
-                    obs_mask[start_idx:] = 1.0
-                else:
-                    full_series[start_idx:end_idx] = clean_bci
-                    obs_mask[start_idx:end_idx] = 1.0
+                raw_chunk = np.asarray(bci_values, dtype=np.float32).reshape(-1)
+                finite_chunk = np.isfinite(raw_chunk)
+                clean_bci = np.nan_to_num(raw_chunk, nan=0.0, posinf=1.0, neginf=0.0)
+                write_len = min(len(clean_bci), self.total_steps - start_idx)
+                end_idx = start_idx + write_len
+                full_series[start_idx:end_idx] = clean_bci[:write_len]
+                obs_mask[start_idx:end_idx] = finite_chunk[:write_len].astype(np.float32)
             
             # Add to lists
             X_list.append(full_series)

@@ -56,31 +56,25 @@ def extract_classical_features(bci_sequence, obs_mask=None):
         time_to_continuity = float(len(seq)) # Patient never achieved sustained continuity (max index 25920)
         
     # Rolling stats (1 min = 6 pts, 5 min = 30 pts, 30 min = 180 pts)
+    # Calculated strictly over contiguous valid (observed) epochs
     features = [mean_val, min_val, max_val, std_val, slope, frac_lt_01, frac_lt_02, frac_lt_03, time_to_continuity]
     
+    valid_points = (mask if mask is not None else np.ones(len(seq), dtype=bool))
     for window in [6, 30, 180]:
-        if len(seq) < window:
-            rolling_mean_max = 0.0; rolling_var_max = 0.0
-            rolling_mean_min = 0.0; rolling_var_min = 0.0
-        else:
-            # Efficient moving average
-            ret = np.cumsum(seq, dtype=float)
-            ret[window:] = ret[window:] - ret[:-window]
-            rolling_mean = ret[window - 1:] / window
-            
-            # Efficient moving variance (Var(x) = E[x^2] - E[x]^2)
-            ret_sq = np.cumsum(seq**2, dtype=float)
-            ret_sq[window:] = ret_sq[window:] - ret_sq[:-window]
-            rolling_mean_sq = ret_sq[window - 1:] / window
-            
-            rolling_var = np.maximum(rolling_mean_sq - rolling_mean**2, 0.0)
-            
-            rolling_mean_max = float(np.max(rolling_mean))
-            rolling_mean_min = float(np.min(rolling_mean))
-            rolling_var_max = float(np.max(rolling_var))
-            rolling_var_min = float(np.min(rolling_var))
-            
-        features.extend([rolling_mean_max, rolling_mean_min, rolling_var_max, rolling_var_min])
+        values = (0.0, 0.0, 0.0, 0.0)
+        if len(seq) >= window:
+            count = np.r_[0, np.cumsum(valid_points.astype(int))]
+            good = (count[window:] - count[:-window]) == window
+            if np.any(good):
+                sums = np.r_[0.0, np.cumsum(seq, dtype=float)]
+                sqs = np.r_[0.0, np.cumsum(seq**2, dtype=float)]
+                means = (sums[window:] - sums[:-window]) / window
+                second = (sqs[window:] - sqs[:-window]) / window
+                variances = np.maximum(second - means**2, 0.0)
+                means, variances = means[good], variances[good]
+                values = (float(means.max()), float(means.min()),
+                          float(variances.max()), float(variances.min()))
+        features.extend(values)
         
     # Return 9 + 3*4 = 21 features
     return np.array(features)

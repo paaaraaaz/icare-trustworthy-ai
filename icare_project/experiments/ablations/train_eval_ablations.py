@@ -1,6 +1,7 @@
 import os
 import sys
 import copy
+import random
 import argparse
 import torch
 import torch.nn as nn
@@ -153,6 +154,13 @@ def train_and_validate_ablation(model, train_loader, val_loader, test_loader,
         'Threshold': threshold
     }, test_m['targets'], test_m['preds'], test_bin
 
+def set_ablation_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
 def run_all_ablations(output_csv='ablation_table2.csv', eval_only=False, checkpoint_dir='checkpoints_ablations'):
     print(f"Loading I-CARE dataset on device: {DEVICE}...")
     # Supports optional environment variable ICARE_DATA_DIR
@@ -174,8 +182,10 @@ def run_all_ablations(output_csv='ablation_table2.csv', eval_only=False, checkpo
         print(f"\n================ Outer Fold {fold_idx + 1}/5: Held-out Hospital {hosp} ================")
         train_l, val_l, test_l, _ = get_unified_loaders(dataset, fold_idx=fold_idx, batch_size=16)
         
-        for vname, vcfg in variants.items():
-            print(f"  Evaluating Variant: {vname:18s} ...", end=" ", flush=True)
+        for variant_idx, (vname, vcfg) in enumerate(variants.items()):
+            seed = 42 + 100 * fold_idx + variant_idx
+            set_ablation_seed(seed)
+            print(f"  Evaluating Variant: {vname:18s} (seed={seed}) ...", end=" ", flush=True)
             model = ICAREModelAblation(**vcfg)
             res, y_true, y_preds, y_bin = train_and_validate_ablation(
                 model, train_l, val_l, test_l,

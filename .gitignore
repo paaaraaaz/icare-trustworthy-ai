@@ -24,8 +24,11 @@ data/*.csv
 *.npy
 *.joblib
 
-# Generated figures
+# Generated figures & tables
 icare_project/figures/
 figures/
 *.png
 *.pdf
+icare_project/tables/
+tables/
+*.csv
